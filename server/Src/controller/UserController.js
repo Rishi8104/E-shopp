@@ -1,122 +1,113 @@
 
 import { StatusCodes } from "http-status-codes";
-import Usermodel from "../Model/Usermodel.js";
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import OrderModel from "../model/Ordermodel.js";
+import { comparePassword,hashedPassword} from "../Helper/authHelper.js";
+import Usermodel from "../model/UserModel.js";
+  
+export async function Ragister(request, response) {
+  try {
+    const { name, email, password, address, city, state, pincode, answer, Gst } = request.body;
 
-
- export const Ragister = async (req, role, res) => {
-    try {
-      //Get employee from database with same name if any
-      const validateUser = async (name) => {
-        let User = await Usermodel.findOne({ name });
-        return User ? false : true;
-      };
-  
-      //Get employee from database with same email if any
-      const validateEmail = async (email) => {
-        let User = await Usermodel.findOne({ email });
-        return User ? false : true;
-      };
-      // Validate the name
-      let nameNotTaken = await validateUser(req.name);
-      if (!nameNotTaken) {
-        return res.status(StatusCodes.BAD_REQUEST).json({
-          message: `Employee name is already taken.`,
-        });
-      }
-  
-      // validate the email
-      let emailNotRegistered = await validateEmail(req.email);
-      if (!emailNotRegistered) {
-        return res.status(StatusCodes.BAD_REQUEST).json({
-          message: `Email is already registered.`,
-        });
-      }
-  
-  // Hash password using bcrypt
-      const password = await bcrypt.hash(req.password, 12);
-      // create a new user
-      const newUser = new Usermodel({
-        ...req,
-        password,
-        role
-      });
-  
-      await newUser .save();
-      return res.status(StatusCodes.CREATED).json({
-        message: "Hurry! now you are successfully registred. Please nor login."
-      });
-    } catch (err) {
-      // Implement logger function if any
-      console.log(err);
-      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-        message: `${err.message}`
-      });
+    // Validation
+    if (!name || !email || !password || !address || !city || !state || !pincode || !answer || !Gst) {
+      return response.status(StatusCodes.BAD_REQUEST).json({ error: "All fields are required" });
     }
-  };
 
-
-
- export  const Login = async (req, role, res) => {
-    let { email, password } = req;
-  
-    // First Check if the user exist in the database
-    const User = await Usermodel.findOne({ email });
-    if (!User) {
-      return res.status(StatusCodes.NOT_FOUND).json({
-        message: "User email is not found. Invalid login credentials.",
+    // Check if user already exists
+    const existingUser = await Usermodel.findOne({ email });
+    if (existingUser) {
+      return response.status(StatusCodes.CONFLICT).json({
         success: false,
+        message: "User already registered. Please login.",
       });
     }
-    // We will check the if the employee is logging in via the route for his departemnt
-    if (User.role !== role) {
-      return res.status(StatusCodes.FORBIDDEN).json({
-        message: "Please make sure you are logging in from the right portal.",
-        success: false,
-      });
-    }
-  
-    // That means the employee is existing and trying to signin fro the right portal
-    // Now check if the password match
-    let isMatch = await bcrypt.compare(password, User.password);
-    if (isMatch) {
-      // if the password match Sign a the token and issue it to the employee
-      let token = jwt.sign(
-        {
-          role: User.role,
-          name: User.name,
-          email: User.email,
-        },
-        process.env.SECRET_KEY,
-        { expiresIn: "3 days" }
-      );
-  
-      let result = {
-        name: User.name,
-        role: User.role,
-        email: User.email,
-        // token: `Bearer ${token}`,
-        expiresIn: 168,
-      };
-      
-      res.status(StatusCodes.OK).cookie('jwt',token,{
-        expires: new Date(Date.now()+90* 24* 60* 60* 1000),
-        secqure:false,
-        httpOnly:true,
-      });
 
-      return res.json({
-        ...result,
-        message: "You are now logged in.",
-      });
-    } else {
-      return res.status(StatusCodes.FORBIDDEN).json({
-        message: "Incorrect password.",
+    // New User Registration
+    const hashPassword = await hashedPassword(password);
+    const newUser = await new Usermodel({
+      name, email, password:hashPassword, state, address, city, pincode, answer, Gst
+    }).save();
+
+    response.status(StatusCodes.CREATED).json({
+      success: true,
+      message: "User created successfully",
+      newUser,
+    });
+  } catch (error) {
+    console.error(error);
+    response.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "User could not be created",
+      error: error.message, // Use error.message to get a more meaningful error message
+    });
+  }
+}
+
+
+export async function Login(request, response) {
+  try {
+    const { email, password } = request.body;
+
+    // Check if email and password are provided
+    if (!email || !password) {
+      return response.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "Invalid email or password",
       });
     }
-  };
+
+    // Check if user exists
+    const user = await Usermodel.findOne({ email });
+
+    if (!user) {
+      return response.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "Email is not found",
+      });
+    }
+
+    // Compare passwords
+    const match = await comparePassword(password, user.password);
+
+    if (!match) {
+      return response.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "Password does not match",
+      });
+    }
+
+    // Token Generation
+    const Token = jwt.sign({
+      _id: user._id,
+    }, process.env.JWT_VERIFY, {
+      expiresIn: "7d",
+    });
+
+    response.status(StatusCodes.OK).json({
+      success: true,
+      message: "Login successful",
+      user: {
+        _id: user._id,
+        name: user.name, // Correct variable name
+        email: user.email, // Correct variable name
+        phone: user.phone, // Adjust these based on your actual schema
+        address: user.address, // Correct variable name
+        role: user.role, // Correct variable name
+      },
+      Token,
+    });
+
+  } catch (error) {
+    console.log(error);
+    response.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Login failed",
+      error: error.message, // Use error.message to get a more meaningful error message
+    });
+  }
+}
+
   
 
 
