@@ -14,11 +14,12 @@ const productSchema = mongoose.Schema(
     isStock: { type: Boolean, required: true },
     Shipping:{
       type:Boolean,
-    }
+    },
+    slug:{type:String, required:true},
   },
-    // slug:{type:String, required:true},
+    
   { timestamps: true }
 );
 
-const Productmodel = mongoose.model("Product", productSchema);
+const Productmodel = mongoose.model("Product  ", productSchema);
 export default Productmodel;

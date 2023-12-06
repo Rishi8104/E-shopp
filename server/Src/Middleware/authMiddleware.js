@@ -1,13 +1,13 @@
-import JWT from 'jsonwebtoken';
-import Usermodel from '../model/UserModel';
+import JWT from 'jsonwebtoken'
+import Usermodel from '../model/UserModel.js';
 import { StatusCodes } from 'http-status-codes';
-
+import "dotenv/config";
 
 
 //procted(private ) Router Token Basded
-export async function requiredSignIN(request, response,next) {
+export async function requiredSignIn(request, response,next) {
   try {
-  const decode =  JWT.verify(request.headers.authorization,Process.env.JWT_VERIFY);
+  const decode =  JWT.verify(request.headers.authorization,process.env.JWT_VERIFY);
   request.User= decode;
   next();
   } catch (error) {
